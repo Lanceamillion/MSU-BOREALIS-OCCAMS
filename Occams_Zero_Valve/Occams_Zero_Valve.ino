@@ -110,14 +110,14 @@ String state = "IDL";
 String lastState = "IDL";
 
 // Received Iridium state codes, streamed in via XBEE
-const String CODE_IDLE =    "IDL";  // Device code to turn on IDLE                 000
-const String CODE_CUTDOWN = "PRI";  // Device code to trigger cutdown              001
-const String CODE_CUTSEC =  "SEC";  // Device code to trigger secondary cutdown    010
-const String CODE_BALLAST = "DON";  // Device code to turn on Ballast Dropper      011
-const String CODE_OPEN_5 =  "OPN";  // Device code to open Valve for 5 min         100
-const String CODE_OPEN_2 =  "CLS";  // Device code to open Valve for 2 min         101
-const String CODE_TEMP_1 =  "BOP";  // Device code to do something                 110
-const String CODE_TEMP_2 =  "BCL";  // Device code to do something else            111
+const String CODE_IDLE =    "ABC";  // Device code to turn on IDLE                 000
+const String CODE_CUTDOWN = "DEF";  // Device code to trigger cutdown              001
+const String CODE_CUTSEC =  "GHI";  // Device code to trigger secondary cutdown    010
+const String CODE_BALLAST = "JKL";  // Device code to turn on Ballast Dropper      011
+const String CODE_OPEN_5 =  "MNO";  // Device code to open Valve for 5 min         100
+const String CODE_OPEN_2 =  "PQR";  // Device code to open Valve for 2 min         101
+const String CODE_TEMP_1 =  "STU";  // Device code to do something                 110
+const String CODE_TEMP_2 =  "VWX";  // Device code to do something else            111
 
 // Stores incoming command
 String incoming = "";
