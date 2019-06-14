@@ -68,14 +68,14 @@
 
 
 // Corresponding Iridium state codes, streamed out via XBEE
-#define CODE_RESET    "RST"  // Device code to turn on IDLE                 000
-#define CODE_CUTDOWN  "PRI"  // Device code to trigger cutdown              001
-#define CODE_CUTSEC   "SEC"  // Device code to trigger secondary cutdown    010
-#define CODE_BALLAST  "BAL"  // Device code to turn on Ballast Dropper      011
-#define CODE_OPEN_5   "OFV"  // Device code to open Valve for 5 min         100
-#define CODE_OPEN_2   "OTW"  // Device code to open Valve for 2 min         101
-#define CODE_TEMP_1   "TP1"  // Device code to do something                 110
-#define CODE_TEMP_2   "TP2"  // Device code to do something else            111
+#define CODE_RESET    "ABC"  // Activate Reset (IDLE)                       000
+#define CODE_CUTDOWN  "DEF"  // Primary cutdown                             001
+#define CODE_CUTSEC   "GHI"  // Secondary cutdown or other                  010
+#define CODE_BALLAST  "JKL"  // Changes with application                    011
+#define CODE_OPEN_5   "MNO"  // Changes with application                    100
+#define CODE_OPEN_2   "PQR"  // Changes with application                    101
+#define CODE_TEMP_1   "STU"  // Changes with application                    110
+#define CODE_TEMP_2   "VWX"  // Changes with application                    111
 
 Timer commandTimer(millis);
 Timer heartbeatTimer(millis);
