@@ -43,14 +43,14 @@
 #define VALVE_OPEN_PIN 10                     // Connected to limit switch: pulled up when fully open   Makked PB2 on Occams V11 but incorect
 
 // Valve opening wait times in ms
-#define VALVE_2_MIN 1000//120000
-#define VALVE_5_MIN 20000
+#define VALVE_2_MIN 10
+#define VALVE_5_MIN 300
 
 // Motor controller pins
-#define MOTOR_PWMA 3                                // PWM speed control
-#define MOTOR_AIN1 4                                // A IN 1 motor Direction
-#define MOTOR_AIN2 2                                // A IN 2 motor Direction
-#define MOTOR_STBY 17                               // Standby pin ON / OFF
+#define MOTOR_PWMA 3                          // PWM speed control
+#define MOTOR_AIN1 4                          // A IN 1 motor Direction
+#define MOTOR_AIN2 2                          // A IN 2 motor Direction
+#define MOTOR_STBY 17                         // Standby pin ON / OFF
 #define MOTOR_OFFSET 1
 
 /*
@@ -65,8 +65,8 @@
 #define VALVE_MOTOR_CLOSE -255
 #define VALVE_MOTOR_STOP 0
 
-#define SLIDE_SWITCH_PIN 7                        //Switch to control timer reset/servo movemen
-#define JUMPER_PIN 11                             //Shunt JUMPER_PIN pin at MOSI (JUMPER_PIN from gnd or 5V)
+#define SLIDE_SWITCH_PIN 7                    // Switch to control timer reset/servo movemen
+#define JUMPER_PIN 11                         // Shunt JUMPER_PIN pin at MOSI (JUMPER_PIN from gnd or 5V)
 
 // Serial
 #define BAUD 9600
@@ -83,6 +83,9 @@
 // Seconds until automatic termination
 // 14,400 = 4 hrs    18,000 = 5 hrs     19,800 = 5.5 hours
 #define FAILSAFE_TIME 19800
+
+// Byte-to-Byte command timeout
+#define COMMAND_TIMEOUT 10
 
 // EEPROM Addresses
 #define EEPROM_FAILSAFE 1  // 2 bytes on addresses 1 to 0, big-endian
@@ -110,23 +113,26 @@ String state = "IDL";
 String lastState = "IDL";
 
 // Received Iridium state codes, streamed in via XBEE
-const String CODE_IDLE =    "ABC";  // Device code to turn on IDLE                 000
-const String CODE_CUTDOWN = "DEF";  // Device code to trigger cutdown              001
-const String CODE_CUTSEC =  "GHI";  // Device code to trigger secondary cutdown    010
-const String CODE_BALLAST = "JKL";  // Device code to turn on Ballast Dropper      011
-const String CODE_OPEN_5 =  "MNO";  // Device code to open Valve for 5 min         100
-const String CODE_OPEN_2 =  "PQR";  // Device code to open Valve for 2 min         101
-const String CODE_TEMP_1 =  "STU";  // Device code to do something                 110
-const String CODE_TEMP_2 =  "VWX";  // Device code to do something else            111
+const String CODE_RESET =   "RST";  // Device code to turn on IDLE                 000
+const String CODE_CUTDOWN = "PRI";  // Device code to trigger cutdown              001
+const String CODE_CUTSEC =  "SEC";  // Device code to trigger secondary cutdown    010
+const String CODE_BALLAST = "BAL";  // Device code to turn on Ballast Dropper      011
+const String CODE_OPEN_5 =  "OFV";  // Device code to open Valve for 5 min         100
+const String CODE_OPEN_2 =  "OTW";  // Device code to open Valve for 2 min         101
+const String CODE_TEMP_1 =  "TP1";  // Device code to do something                 110
+const String CODE_TEMP_2 =  "TP2";  // Device code to do something else            111
 
 // Stores incoming command
-String incoming = "";
+String command = "";
 
 // Timers
 Timer heartbeatTimer(millis);
 SecondsTimer cutdownTimer(millis);
 SecondsTimer valveTimer(millis);
 SecondsTimer failsafeTimer(millis);
+Timer commandTimeout(millis);
+
+bool valveOpenable = true;
 
 
 void setup() {
@@ -146,6 +152,7 @@ void setup() {
   heartbeatTimer.begin();
   valveTimer.begin();
   cutdownTimer.begin();
+  commandTimeout.begin();
 
   int storedTime = 0;
   EEPROM.get(EEPROM_FAILSAFE, storedTime);
@@ -159,11 +166,11 @@ void loop() {
   failsafeTimer.count();
 
   // Core function handlers
-  handleSerial();
   handleHeartbeat();
   handleCutdownProcess();
   handleValveControl();
   handleFailsafeTimer();
+  handleSerial();
 }
 
 /*
@@ -171,18 +178,36 @@ void loop() {
  *  <--------------------------------------------->
 */
 
+
+/* Wait available characters, has a timemout */
+bool waitForSerial () {
+  commandTimeout.reset();
+  while (!Serial.available()) {
+    if (commandTimeout > COMMAND_TIMEOUT) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void handleSerial () {
   if (Serial.available()) {
-    incoming = Serial.readString();
+    command = "";
 
-    if (incoming == CODE_IDLE) handleIdle();
-    else if (incoming == CODE_CUTDOWN) handleCutdown();
-    else if (incoming == CODE_CUTSEC) handleCutdownSec();
-    else if (incoming == CODE_BALLAST) handleBallast();
-    else if (incoming == CODE_OPEN_5) handleValveOpenFive();
-    else if (incoming == CODE_OPEN_2) handleValveOpenTwo();
-    else if (incoming == CODE_TEMP_1) handleTempOne();
-    else if (incoming == CODE_TEMP_2) handleTempTwo();
+    while (command.length() < 3) {
+      if (!waitForSerial()) return;
+      command += (char)Serial.read();
+    }
+    
+    if (command == CODE_RESET) handleReset();
+    else if (command == CODE_CUTDOWN) handleCutdown();
+    else if (command == CODE_CUTSEC) handleCutdownSec();
+    else if (command == CODE_BALLAST) handleBallast();
+    else if (command == CODE_OPEN_5) handleValveOpenFive();
+    else if (command == CODE_OPEN_2) handleValveOpenTwo();
+    else if (command == CODE_TEMP_1) handleTempOne();
+    else if (command == CODE_TEMP_2) handleTempTwo();
+    else handleIdle();
   }
 }
 
@@ -191,14 +216,18 @@ void handleSerial () {
  *  <--------------------------------------------->
 */
 
+void handleReset () {
+  Serial.write('Y');
+  valveOpenable = true;
+}
+
 void handleIdle () {
-  Serial.println("> IDLE");
-  imperialMarch();
+  Serial.write('Y');
 }
 
 
 void handleCutdown () {
-  Serial.println("> CUTDOWN");
+  Serial.write('Y');
   if (!cutdownOn) {
     startCutdown();
     cutdownTimer.reset();
@@ -206,37 +235,45 @@ void handleCutdown () {
 }
 
 void handleCutdownSec () {
-  Serial.println("> CUTSEC");
+  Serial.write('Y');
 }
 
 void handleBallast () {
-  Serial.println("> BALLAST ON");
+  Serial.write('Y');
 }
 
 void handleValveOpenFive () {
-  Serial.println("> VALVE OPEN 5");
-  if (valveIsClosed()) {
+  Serial.write('Y');
+  if (valveOpenable) {
     valveOpenTime = VALVE_5_MIN;
     startValveOpen();
     valveState = OPENING;
+
+    // Disable valve opening until a RESET is received
+    valveOpenable = false;
   }
 }
 
 void handleValveOpenTwo () {
-  Serial.println("> VALVE OPEN 2");
-  if (valveIsClosed()) {
+  Serial.write('Y');
+  if (valveOpenable) {
     valveOpenTime = VALVE_2_MIN;
     startValveOpen();
     valveState = OPENING;
+
+    // Disable valve opening until a RESET is received
+    valveOpenable = false;
   }
 }
 
 void handleTempOne () {
-  Serial.println("> TEMP 1");
+  Serial.write('Y');
+  valveState = OPENING;
+  startValveClose();
 }
 
 void handleTempTwo () {
-  Serial.println("> TEMP 2");
+  Serial.write('Y');
 }
 
 /*
@@ -280,11 +317,11 @@ void stopValve () {
 }
 
 bool valveIsOpen () {
-  return digitalRead(VALVE_OPEN_PIN);
+  return !digitalRead(VALVE_OPEN_PIN);
 }
 
 bool valveIsClosed () {
-  return digitalRead(VALVE_CLOSED_PIN);
+  return !digitalRead(VALVE_CLOSED_PIN);
 }
 
 
