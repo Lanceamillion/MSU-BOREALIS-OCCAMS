@@ -1,5 +1,3 @@
-//
-
 #include <SparkFun_TB6612.h>
 #include <EEPROM.h>
 #include "timer.h"
@@ -41,13 +39,12 @@
 //Heartbeat Indicator & Speaker & Cutdown
 #define HEARTBEAT_PIN 13                      // Digital Pin connected to SCK LED
 #define SPEAKER_PIN 6                         // Audible Indicator
-#define VALVE_CLOSED_PIN 9                    // Connected to limit switch: pulled up when closed       Marked PB1 on Occams V11 but incorect
-#define VALVE_OPEN_PIN 10                     // Connected to limit switch: pulled up when fully open   Makked PB2 on Occams V11 but incorect
 
-// Valve opening wait times in seconds
-#define VALVE_2_MIN 120
+// Valve opening wait times in ms
+#define VALVE_2_MIN 10
 #define VALVE_5_MIN 300
 
+/*
 // Motor controller pins
 #define MOTOR_PWMA 3                          // PWM speed control
 #define MOTOR_AIN1 4                          // A IN 1 motor Direction
@@ -55,17 +52,11 @@
 #define MOTOR_STBY 17                         // Standby pin ON / OFF
 #define MOTOR_OFFSET 1
 
-/*
- * Defines for cutdown motor, change when needed
-#define MOTOR_PWMB 1
-#define MOTOR_BIN1 2
-#define MOTOR_BIN2 3
-*/
-
 // Valve motor velocities
 #define VALVE_MOTOR_OPEN 255
 #define VALVE_MOTOR_CLOSE -255
 #define VALVE_MOTOR_STOP 0
+*/
 
 #define SLIDE_SWITCH_PIN 7                    // Switch to control timer reset/servo movemen
 #define JUMPER_PIN 11                         // Shunt JUMPER_PIN pin at MOSI (JUMPER_PIN from gnd or 5V)
@@ -103,26 +94,20 @@ bool cutdownOn = false;
 
 /*
  * Valve Motor
-*  Offset is a convenient speed multiplier. According to `Motor.drive()` from SparkFun_TB6612.cpp:
-*     speed = speed * Offset;
+ *  Offset is a convenient speed multiplier. According to `Motor.drive()` from SparkFun_TB6612.cpp:
+ *     speed = speed * Offset;
 */
-Motor valveMotor = Motor(MOTOR_AIN1, MOTOR_AIN2, MOTOR_PWMA, MOTOR_OFFSET, MOTOR_STBY);
-
-// Motor cutdownMotor = Motor(MOTOR_BIN1, MOTOR_BIN2, MOTOR_PWMB, MOTOR_OFFSET, MOTOR_STBY);
-
-// Define Codes
-String state = "IDL";
-String lastState = "IDL";
+//Motor valveMotor = Motor(MOTOR_AIN1, MOTOR_AIN2, MOTOR_PWMA, MOTOR_OFFSET, MOTOR_STBY);
 
 // Received Iridium state codes, streamed in via XBEE
 const String CODE_RESET =   "ABC";  // Device code to turn on IDLE                 000
 const String CODE_CUTDOWN = "DEF";  // Device code to trigger cutdown              001
 const String CODE_CUTSEC =  "GHI";  // Device code to trigger secondary cutdown    010
-const String CODE_BALLAST = "JKL";  // Device code to turn on Ballast Dropper      011
-const String CODE_OPEN_5 =  "MNO";  // Device code to open Valve for 5 min         100
-const String CODE_OPEN_2 =  "PQR";  // Device code to open Valve for 2 min         101
-const String CODE_TEMP_1 =  "STU";  // Device code to do something                 110
-const String CODE_TEMP_2 =  "VWX";  // Device code to do something else            111
+const String CODE_3 =       "JKL";  // Changes with application                    011
+const String CODE_4 =       "MNO";  // Changes with application                    100
+const String CODE_5 =       "PQR";  // Changes with application                    101
+const String CODE_6 =       "STU";  // Changes with application                    110
+const String CODE_7 =       "VWX";  // Changes with application                    111
 
 // Stores incoming command
 String command = "";
@@ -143,9 +128,7 @@ void setup() {
 
   //Initialize GPIO
   pinMode(HEARTBEAT_PIN, OUTPUT);               //Default Low (0)
-  pinMode(SPEAKER_PIN, OUTPUT);                //Default Low (0)
-  pinMode(VALVE_CLOSED_PIN, INPUT);
-  pinMode(VALVE_OPEN_PIN, INPUT);
+  pinMode(SPEAKER_PIN, OUTPUT);                 //Default Low (0)
   
   digitalWrite(SPEAKER_PIN, LOW);    
   digitalWrite(HEARTBEAT_PIN, LOW);
@@ -164,13 +147,10 @@ void setup() {
 void loop() {
   // Increment seconds counters if necessary
   cutdownTimer.count();
-  valveTimer.count();
   failsafeTimer.count();
 
   // Core function handlers
   handleHeartbeat();
-  handleCutdownProcess();
-  handleValveControl();
   handleFailsafeTimer();
   handleSerial();
 }
@@ -204,11 +184,11 @@ void handleSerial () {
     if (command == CODE_RESET) handleReset();
     else if (command == CODE_CUTDOWN) handleCutdown();
     else if (command == CODE_CUTSEC) handleCutdownSec();
-    else if (command == CODE_BALLAST) handleBallast();
-    else if (command == CODE_OPEN_5) handleValveOpenFive();
-    else if (command == CODE_OPEN_2) handleValveOpenTwo();
-    else if (command == CODE_TEMP_1) handleTempOne();
-    else if (command == CODE_TEMP_2) handleTempTwo();
+    else if (command == CODE_3) handle3();
+    else if (command == CODE_4) handle4();
+    else if (command == CODE_5) handle5();
+    else if (command == CODE_6) handle6();
+    else if (command == CODE_7) handle7();
     else handleIdle();
   }
 }
@@ -220,131 +200,38 @@ void handleSerial () {
 
 void handleReset () {
   Serial.write('Y');
-  valveOpenable = true;
 }
 
 void handleIdle () {
   Serial.write('Y');
 }
 
-
 void handleCutdown () {
   Serial.write('Y');
-  if (!cutdownOn) {
-    startCutdown();
-    cutdownTimer.reset();
-  }
 }
 
 void handleCutdownSec () {
   Serial.write('Y');
 }
 
-void handleBallast () {
+void handle3 () {
   Serial.write('Y');
 }
 
-void handleValveOpenFive () {
-  Serial.write('Y');
-  if (valveOpenable) {
-    valveOpenTime = VALVE_5_MIN;
-    startValveOpen();
-    valveState = OPENING;
-
-    // Disable valve opening until a RESET is received
-    valveOpenable = false;
-  }
-}
-
-void handleValveOpenTwo () {
-  Serial.write('Y');
-  if (valveOpenable) {
-    valveOpenTime = VALVE_2_MIN;
-    startValveOpen();
-    valveState = OPENING;
-
-    // Disable valve opening until a RESET is received
-    valveOpenable = false;
-  }
-}
-
-void handleTempOne () {
-  Serial.write('Y');
-    valveState = CLOSING;
-    startValveClose();
-}
-
-void handleTempTwo () {
+void handle4 () {
   Serial.write('Y');
 }
 
-/*
- *                [ Cutdown Control ]
- *  <--------------------------------------------->
-*/
-
-void startCutdown () {
-  cutdownOn = true;
-  // cutdownMotor.drive(CUTDOWN_MOTOR_ON);
+void handle5 () {
+  Serial.write('Y');
 }
 
-void stopCutdown () {
-  cutdownOn = false;
-  // cutdownMotor.drive(CUTDOWN_MOTOR_OFF);
+void handle6 () {
+  Serial.write('Y');
 }
 
-void handleCutdownProcess() {
-  if (cutdownOn) {
-    if (cutdownTimer > CUTDOWN_TIME) {
-      stopCutdown();
-    }
-  }
-}
-
-/*
- *                [ Valve Control ]
- *  <--------------------------------------------->
-*/
-
-void startValveOpen () {
-  valveMotor.drive(VALVE_MOTOR_OPEN);
-}
-
-void startValveClose () {
-  valveMotor.drive(VALVE_MOTOR_CLOSE);
-}
-
-void stopValve () {
-  valveMotor.drive(VALVE_MOTOR_STOP);
-}
-
-bool valveIsOpen () {
-  return !digitalRead(VALVE_OPEN_PIN);
-}
-
-bool valveIsClosed () {
-  return !digitalRead(VALVE_CLOSED_PIN);
-}
-
-
-void handleValveControl () {
-  if (valveState == OPENING) {
-    if (valveIsOpen()) {
-      valveState = OPEN;
-      stopValve();
-      valveTimer.reset();
-    }
-  } else if (valveState == CLOSING) {
-    if (valveIsClosed()) {
-      valveState = CLOSED;
-      stopValve();
-    }
-  } else if (valveState == OPEN) {
-    if (valveTimer > valveOpenTime) {
-      valveState = CLOSING;
-      startValveClose();
-    }
-  }
+void handle7 () {
+  Serial.write('Y');
 }
 
 /*
@@ -371,7 +258,8 @@ void handleHeartbeat () {
   }
 }
 
-void handleFailsafeTimer () {  
+// Run a cutdown procedure if time has elapsed
+void handleFailsafeTimer () {
   if (failsafeTimer > FAILSAFE_TIME) {
     failsafeTimer.reset();
     // do the deed

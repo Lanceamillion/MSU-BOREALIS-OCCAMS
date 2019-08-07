@@ -81,6 +81,7 @@
 // Timing values
 #define HEARTBEAT_TIME 1000  // ms
 #define CUTDOWN_TIME 20      // sec
+#define COMMAND_INTERVAL 500  // ms
 
 // Seconds until automatic termination
 // 14,400 = 4 hrs    18,000 = 5 hrs     19,800 = 5.5 hours
@@ -97,9 +98,23 @@ enum VALVE_STATE { OPEN, CLOSED, OPENING, CLOSING };
 
 // Valve Stuff
 VALVE_STATE valveState = CLOSED;              // Valve state ( opened, closed, opening, closing )
-unsigned long valveOpenTime;                // Timer equal to the time the valve will begin closing
+unsigned long valveOpenTime;                  // Timer equal to the time the valve will begin closing
+boolean enableValveTimer = false;             // Bool to disable timer to keep valve open
+
+//Cutdown connections
+#define NICHROME_MOSFET 5                     // Digital Pin connected to the nichrome mosfet
+
+//Cutdown times
+#define NICHROME_TIME 10
+
+// Define cutdown logic
+enum CUT_STATE {BURNING, IDLING};
+CUT_STATE cutState = IDLING;                  // Cutdown state
+boolean nichromeReady = true;
 
 bool cutdownOn = false;
+
+String codeOut;
 
 /*
  * Valve Motor
@@ -117,12 +132,17 @@ String lastState = "IDL";
 // Received Iridium state codes, streamed in via XBEE
 const String CODE_RESET =   "ABC";  // Device code to turn on IDLE                 000
 const String CODE_CUTDOWN = "DEF";  // Device code to trigger cutdown              001
-const String CODE_CUTSEC =  "GHI";  // Device code to trigger secondary cutdown    010
-const String CODE_BALLAST = "JKL";  // Device code to turn on Ballast Dropper      011
+const String CODE_CUTSEC =  "GHI";  // unassigned                                  010
+const String CODE_BALLAST = "JKL";  // unassigned                                  011
 const String CODE_OPEN_5 =  "MNO";  // Device code to open Valve for 5 min         100
 const String CODE_OPEN_2 =  "PQR";  // Device code to open Valve for 2 min         101
-const String CODE_TEMP_1 =  "STU";  // Device code to do something                 110
-const String CODE_TEMP_2 =  "VWX";  // Device code to do something else            111
+const String CODE_TEMP_1 =  "STU";  // Close                                       110
+const String CODE_TEMP_2 =  "VWX";  // Open                                        111
+
+// Sent Valve state codes, streamed in via XBEE
+const String STATE_OPENED =  "opn";
+const String STATE_CLOSED =  "cls";
+const String STATE_BETWEEN = "bwt";
 
 // Stores incoming command
 String command = "";
@@ -133,19 +153,20 @@ SecondsTimer cutdownTimer(millis);
 SecondsTimer valveTimer(millis);
 SecondsTimer failsafeTimer(millis);
 Timer commandTimeout(millis);
+Timer commandTimer(millis);
 
 bool valveOpenable = true;
 
 
 void setup() {
   Serial.begin(BAUD);
-  Serial.setTimeout(SERIAL_TIMEOUT);  //Set recieve timeout in milliseconds
 
   //Initialize GPIO
   pinMode(HEARTBEAT_PIN, OUTPUT);               //Default Low (0)
-  pinMode(SPEAKER_PIN, OUTPUT);                //Default Low (0)
+  pinMode(SPEAKER_PIN, OUTPUT);                 //Default Low (0)
   pinMode(VALVE_CLOSED_PIN, INPUT);
   pinMode(VALVE_OPEN_PIN, INPUT);
+  pinMode(NICHROME_MOSFET, OUTPUT);
   
   digitalWrite(SPEAKER_PIN, LOW);    
   digitalWrite(HEARTBEAT_PIN, LOW);
@@ -159,6 +180,7 @@ void setup() {
   int storedTime = 0;
   EEPROM.get(EEPROM_FAILSAFE, storedTime);
   failsafeTimer.begin(storedTime);
+  commandTimer.begin();
 }
 
 void loop() {
@@ -168,11 +190,23 @@ void loop() {
   failsafeTimer.count();
 
   // Core function handlers
+  handleCommands();
   handleHeartbeat();
-  handleCutdownProcess();
+  handleCutdowns();
   handleValveControl();
   handleFailsafeTimer();
   handleSerial();
+}
+/*
+ *                  [ Serial Tx ]
+ *  <--------------------------------------------->
+*/
+
+void handleCommands () {
+  if (commandTimer > COMMAND_INTERVAL) {
+    commandTimer.reset();
+    Serial.write( valveIsOpen() ? STATE_OPENED.c_str() : valveIsClosed() ? STATE_CLOSED.c_str() : STATE_BETWEEN.c_str() );
+  }
 }
 
 /*
@@ -219,34 +253,39 @@ void handleSerial () {
 */
 
 void handleReset () {
-  Serial.write('Y');
+  //Serial.write('Y');
   valveOpenable = true;
 }
 
 void handleIdle () {
-  Serial.write('Y');
+  //Serial.write('Y');
 }
 
 
 void handleCutdown () {
-  Serial.write('Y');
+  //Serial.write('Y');
   if (!cutdownOn) {
-    startCutdown();
-    cutdownTimer.reset();
+    if (nichromeReady && cutState == IDLING) {
+      nichromeReady = false;
+      cutState = BURNING;
+      cutdownTimer.reset();
+      digitalWrite(NICHROME_MOSFET, HIGH);
+    }
   }
 }
 
 void handleCutdownSec () {
-  Serial.write('Y');
+  //Serial.write('Y');
 }
 
 void handleBallast () {
-  Serial.write('Y');
+  //Serial.write('Y');
 }
 
 void handleValveOpenFive () {
-  Serial.write('Y');
+  //Serial.write('Y');
   if (valveOpenable) {
+    enableValveTimer = true;
     valveOpenTime = VALVE_5_MIN;
     startValveOpen();
     valveState = OPENING;
@@ -257,8 +296,9 @@ void handleValveOpenFive () {
 }
 
 void handleValveOpenTwo () {
-  Serial.write('Y');
+  //Serial.write('Y');
   if (valveOpenable) {
+    enableValveTimer = true;
     valveOpenTime = VALVE_2_MIN;
     startValveOpen();
     valveState = OPENING;
@@ -269,13 +309,17 @@ void handleValveOpenTwo () {
 }
 
 void handleTempOne () {
-  Serial.write('Y');
+  //Serial.write('Y');
     valveState = CLOSING;
     startValveClose();
 }
 
 void handleTempTwo () {
-  Serial.write('Y');
+  //Serial.write('Y');
+    enableValveTimer = false;
+    valveOpenTime = 0;
+    valveState = OPENING;
+    startValveOpen();
 }
 
 /*
@@ -283,20 +327,11 @@ void handleTempTwo () {
  *  <--------------------------------------------->
 */
 
-void startCutdown () {
-  cutdownOn = true;
-  // cutdownMotor.drive(CUTDOWN_MOTOR_ON);
-}
-
-void stopCutdown () {
-  cutdownOn = false;
-  // cutdownMotor.drive(CUTDOWN_MOTOR_OFF);
-}
-
-void handleCutdownProcess() {
-  if (cutdownOn) {
-    if (cutdownTimer > CUTDOWN_TIME) {
-      stopCutdown();
+void handleCutdowns () {
+  if (cutState == BURNING) {
+    if (cutdownTimer > NICHROME_TIME){
+      cutState = IDLING;
+      digitalWrite(NICHROME_MOSFET, LOW);
     }
   }
 }
@@ -340,7 +375,7 @@ void handleValveControl () {
       stopValve();
     }
   } else if (valveState == OPEN) {
-    if (valveTimer > valveOpenTime) {
+    if (valveTimer > valveOpenTime && enableValveTimer) {
       valveState = CLOSING;
       startValveClose();
     }
@@ -374,7 +409,10 @@ void handleHeartbeat () {
 void handleFailsafeTimer () {  
   if (failsafeTimer > FAILSAFE_TIME) {
     failsafeTimer.reset();
-    // do the deed
+    nichromeReady = false;
+    cutState = BURNING;
+    cutdownTimer.reset();
+    digitalWrite(NICHROME_MOSFET, HIGH);
   }
 
   // Redundant two trigger, timer reset

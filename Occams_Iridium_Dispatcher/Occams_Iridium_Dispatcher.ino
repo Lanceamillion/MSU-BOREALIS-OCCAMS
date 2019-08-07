@@ -41,6 +41,15 @@
 #define COMMAND_BIT_1 3
 #define COMMAND_BIT_2 4
 
+// To Iridium (Commands to Iridium)
+#define SET_BIT_0 15
+#define SET_BIT_1 14
+#define SET_BIT_2 16
+#define SET_BIT_3 17
+
+// Byte-to-Byte command timeout
+#define COMMAND_TIMEOUT 10
+
 // Heartbeat Indicator
 #define HEARTBEAT_PIN 13                          //Digital Pin connected to SCK LED
 
@@ -77,9 +86,16 @@
 #define CODE_TEMP_1   "STU"  // Changes with application                    110
 #define CODE_TEMP_2   "VWX"  // Changes with application                    111
 
+// Sent Valve state codes, streamed in via XBEE
+const String STATE_OPENED =  "opn";
+const String STATE_CLOSED =  "cls";
+const String STATE_BETWEEN = "bwt";
+
 Timer commandTimer(millis);
 Timer heartbeatTimer(millis);
+Timer commandTimeout(millis);
 
+String stateCommand = "";
 int command = 0;
 String codeOut;
 
@@ -88,22 +104,31 @@ void setup() {
   
   // Initialize GPIO
   pinMode(HEARTBEAT_PIN, OUTPUT);               //Default Low (0)
-  pinMode(SPEAKER_PIN, OUTPUT);                //Default Low (0)
+  pinMode(SPEAKER_PIN, OUTPUT);                 //Default Low (0)
   
   pinMode(COMMAND_BIT_0, INPUT);
   pinMode(COMMAND_BIT_1, INPUT);
   pinMode(COMMAND_BIT_2, INPUT);
+
+  pinMode(SET_BIT_0 ,OUTPUT);
+  pinMode(SET_BIT_1 ,OUTPUT);
+  pinMode(SET_BIT_2 ,OUTPUT);
+  pinMode(SET_BIT_3 ,OUTPUT);
   
   digitalWrite(SPEAKER_PIN, LOW);    
   digitalWrite(HEARTBEAT_PIN, LOW);
   
   commandTimer.begin();
   heartbeatTimer.begin();
+  commandTimeout.begin();
+
+  setIridiumCommand(15);
 }
 
 void loop() {
   handleHeartbeat();
   handleCommands();
+  handleSerial();
 }
 
 void handleCommands () {
@@ -114,7 +139,6 @@ void handleCommands () {
     switch (command) {
       case SEQ_RESET:
         codeOut = CODE_RESET;
-        shortBeep();
         break;
       case SEQ_CUTDOWN:
         codeOut = CODE_CUTDOWN;
@@ -143,6 +167,38 @@ void handleCommands () {
 
     Serial.write(codeOut.c_str());
   }
+}
+
+bool waitForSerial () {
+  commandTimeout.reset();
+  while (!Serial.available()) {
+    if (commandTimeout > COMMAND_TIMEOUT) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void handleSerial () {
+  if (Serial.available()) {
+    stateCommand = "";
+
+    while (stateCommand.length() < 3) {
+      if (!waitForSerial()) return;
+      stateCommand += (char)Serial.read();
+    }
+    
+    if (stateCommand == STATE_OPENED) setIridiumCommand(0);
+    else if (stateCommand == STATE_CLOSED) setIridiumCommand(1);
+    else if (stateCommand == STATE_BETWEEN) setIridiumCommand(2);
+  }
+}
+
+void setIridiumCommand (int dat) {
+  digitalWrite(SET_BIT_1, dat & 1);
+  digitalWrite(SET_BIT_0, (dat >> 1) & 1);
+  digitalWrite(SET_BIT_2, (dat >> 2) & 1);
+  digitalWrite(SET_BIT_3, (dat >> 3) & 1);
 }
 
 // Returns a three bit code as an int
