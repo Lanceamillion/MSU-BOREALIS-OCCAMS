@@ -275,6 +275,7 @@ void handleFailsafeTimer () {
   EEPROM.put(EEPROM_FAILSAFE, failsafeTimer.elapsed());
 }
 
+//Warning The following is a blocking function and should be used with caution
 void imperialMarch(void){                                     //https://www.youtube.com/watch?v=hNv5sPu0C1E
     //Code adapted from http://pasted.co/e525c1b2 and eserra @ http://www.instructables.com/id/How-to-easily-play-music-with-buzzer-on-arduino-Th/?ALLSTEPS
     //tone(pin, note, duration)
