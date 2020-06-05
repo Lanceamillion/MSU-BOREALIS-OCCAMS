@@ -21,7 +21,7 @@ def pri_cutdown():
         print("PRI CUTDOWN INITIATED")
         PRI_MOSFET.value(1)
         flush_rx_buffer()
-        time.sleep(5)
+        time.sleep(20)
         PRI_MOSFET.value(0)
 
 def sec_cutdown():
@@ -32,7 +32,7 @@ def sec_cutdown():
         print("SEC CUTDOWN INITIATED")
         SEC_LED.value(1)
         flush_rx_buffer()
-        time.sleep(5)
+        time.sleep(20)
         SEC_LED.value(0)
 
 def idle_command():
