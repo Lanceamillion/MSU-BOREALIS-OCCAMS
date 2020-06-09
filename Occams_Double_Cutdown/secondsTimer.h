@@ -1,13 +1,17 @@
-#ifndef TIMER_H
-#define TIMER_H
+#ifndef SECONDS_TIMER_H
+#define SECONDS_TIMER_H
 
-class Timer {
+#include "timer.h"
+
+class SecondsTimer {
   public:
-    long unsigned int (*timingFunc)();
-    Timer ( long unsigned int (*t)() );
+    SecondsTimer ( long unsigned int (*t)() );
+    SecondsTimer (Timer *millis);
+    ~SecondsTimer ();
     void begin ();
-    void begin (int _start);
+    void begin (int start);
     void reset ();
+    void count ();
     int elapsed ();
 
     void operator +=(int x);
@@ -18,7 +22,8 @@ class Timer {
     int operator >=(int compare);
     int operator <=(int compare);
   private:
-    int start;
+    Timer *millisTimer;
+    int seconds;
 };
 
 #endif

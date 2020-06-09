@@ -47,22 +47,22 @@ def check_for_command(payload):
     payload = payload.decode("utf-8")
     # Take out first 3 characters
     if len(payload) >= 3:
-        command = payload[0] + payload [1] + payload [2]
+        command = payload[0] + payload[1] + payload[2]
         print("Interpretted command: " + command)
-    if "DEF" in command:
-        pri_cutdown()
-    elif "GHI" in command:
-        sec_cutdown()
-    elif "ABC" in command:
-        idle_command()
-        print("IDLE")
+        if "DEF" == command:
+            pri_cutdown()
+        elif "GHI" == command:
+            sec_cutdown()
+        elif "ABC" == command:
+            idle_command()
+            print("IDLE")
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 print('ID: ' + str(xbee.atcmd('MY')))
 # PIN DEFINITIONS
 USER_LED = Pin(machine.Pin.board.D4, Pin.OUT, value=0)
-PRI_MOSFET = Pin(machine.Pin.board.D5, Pin.OUT, value=0)
+PRI_MOSFET = Pin(machine.Pin.board.D12, Pin.OUT, value=0)
 SEC_LED = Pin(machine.Pin.board.D11, Pin.OUT, value=0)
 
 # FLAG DEFINITONS
