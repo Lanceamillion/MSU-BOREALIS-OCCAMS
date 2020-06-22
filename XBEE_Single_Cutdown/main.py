@@ -25,15 +25,6 @@ def pri_cutdown():
         time.sleep(20)
         PRI_MOSFET.value(0)
 
-def sec_cutdown():
-    global secCutdownFlag
-    print("SEC CUTDOWN RECEIVED")
-    if (secCutdownFlag):
-        secCutdownFlag = False
-        print("SEC CUTDOWN INITIATED")
-        flush_rx_buffer()
-
-
 def idle_command():
     global priCutdownFlag
     global secCutdownFlag
@@ -49,10 +40,8 @@ def check_for_command(payload):
     if len(payload) >= 3:
         command = payload[0] + payload[1] + payload[2]
         print("Interpretted command: " + command)
-        if "DEF" == command:
+        if "JKL" == command:
             pri_cutdown()
-        elif "GHI" == command:
-            sec_cutdown()
         elif "ABC" == command:
             idle_command()
             print("IDLE")
