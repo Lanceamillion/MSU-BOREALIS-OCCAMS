@@ -285,6 +285,7 @@ void handleFailsafeTimer () {
     failsafeTimer.reset();
     imperialMarch();
     cutState = SPINNING;
+    cutdownTimer.reset();
     digitalWrite(MOTOR_MOSFET, HIGH);
   }
 
