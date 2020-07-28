@@ -1,4 +1,4 @@
-//To be used with dual cutdown
+//To be used with dual cutdown AKA cutdown V2
 
 #include <SparkFun_TB6612.h>
 #include <EEPROM.h>
