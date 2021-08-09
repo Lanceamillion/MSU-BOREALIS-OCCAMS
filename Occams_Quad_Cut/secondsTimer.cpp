@@ -18,7 +18,7 @@ void SecondsTimer::begin () {
   millisTimer->begin();
 }
 
-void SecondsTimer::begin (uint32_t start) {
+void SecondsTimer::begin (int start) {
   seconds = start;
   millisTimer->begin();
 }
@@ -35,34 +35,35 @@ void SecondsTimer::count () {
   }
 }
 
-uint32_t SecondsTimer::elapsed () {
+int SecondsTimer::elapsed () {
   return seconds;
 }
 
-void SecondsTimer::operator +=(uint32_t x) {
+void SecondsTimer::operator +=(int x) {
   seconds += x;
 }
 
-void SecondsTimer::operator -=(uint32_t x) {
+void SecondsTimer::operator -=(int x) {
   seconds -= x;
 }
 
-uint32_t SecondsTimer::operator ==(uint32_t compare) {
+int SecondsTimer::operator ==(int compare) {
   return seconds == compare;
 }
 
-uint32_t SecondsTimer::operator <(uint32_t compare) {
+int SecondsTimer::operator <(int compare) {
   return seconds < compare;
 }
 
-uint32_t SecondsTimer::operator >(uint32_t compare) {
+int SecondsTimer::operator >(int compare) {
   return seconds > compare;
 }
 
-uint32_t SecondsTimer::operator >=(uint32_t compare) {
+int SecondsTimer::operator >=(int compare) {
   return seconds >= compare;
 }
 
-uint32_t SecondsTimer::operator <=(uint32_t compare) {
+int SecondsTimer::operator <=(int compare) {
   return seconds <= compare;
 }
+

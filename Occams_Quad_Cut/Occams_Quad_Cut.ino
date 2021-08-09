@@ -1,3 +1,4 @@
+
 //To be used with dual cutdown AKA cutdown V2
 
 #include <SparkFun_TB6612.h>
@@ -5,7 +6,6 @@
 #include "timer.h"
 #include "secondsTimer.h"
 #include "inttypes.h"
-#include "stdint.h"
 
 //Music Notes
 #define F3  174.61
@@ -32,7 +32,7 @@
 // DURATION OF THE NOTES 
 #define BPM 120                               // you can change this value changing all the others
 #define H 2*Q                                 // half 2/4
-#define Q 60000/BPM                           // quarter 1/4
+#define Q 60000/BPM                           // quarter 1/4 
 #define E Q/2                                 // eighth 1/8
 #define S Q/4                                 // sixteenth 1/16
 #define W 4*Q                                 // whole 4*4 [editted comment]
@@ -45,7 +45,10 @@
 
 //Cutdown connections
 #define MOTOR_MOSFET 8                        // Digital pin connected to the motor mosfet
-#define NICHROME_MOSFET 5                     // Digital Pin connected to the nichrome mosfet
+#define NICHROME_MOSFET_1 4                   
+#define NICHROME_MOSFET_2 3
+#define NICHROME_MOSFET_3 2
+#define NICHROME_MOSFET_4 A3
 
 //Cutdown times
 #define MOTOR_TIME 10
@@ -56,7 +59,6 @@ enum CUT_STATE { SPINNING, BURNING, IDLING};
 CUT_STATE cutState = IDLING;                  // Cutdown state
 boolean nichromeReady = true;
 boolean motorReady = true;
-boolean addReady = true;
 
 // Reset pins
 #define SLIDE_SWITCH_PIN 7                    // Switch to control timer reset/servo movemen
@@ -66,29 +68,33 @@ boolean addReady = true;
 #define BAUD 9600
 #define SERIAL_TIMEOUT 50  // ms
 
+// I2C
+#define I2C_SDA 18
+#define I2C_SCL 19
+
 // Timing values
 #define HEARTBEAT_TIME 1000  // ms
-#define CUTDOWN_TIME 10      // sec
+#define CUTDOWN_TIME 20      // sec
 
 // Seconds until automatic termination
-// 14,400 = 4 hrs    18,000 = 5 hrs     19,800 = 5.5 hrs    28,800 = 8 hrs
-uint32_t FAILSAFE_TIME = 28800;
+// 14,400 = 4 hrs    18,000 = 5 hrs     19,800 = 5.5 hours
+#define FAILSAFE_TIME 19800
 
 // Byte-to-Byte command timeout
 #define COMMAND_TIMEOUT 10
 
 // EEPROM Addresses
-#define EEPROM_FAILSAFE 0  // 2 bytes on addresses 1 to 0, big-endian
+#define EEPROM_FAILSAFE 1  // 2 bytes on addresses 1 to 0, big-endian
 
 // Received Iridium state codes, streamed in via XBEE
-const String CODE_RESET =   "ABC";  // Device code to turn on IDLE                 000
-const String CODE_ADD =     "DEF";  // Changes with application                    001
-const String CODE_CUTDOWN = "GHI";  // Device code to trigger cutdown              010
-const String CODE_CUTSEC =  "JKL";  // Device code to trigger secondary cutdown    011
-const String CODE_1 =       "MNO";  // Add 2 hours to failsafe                     100
-const String CODE_6 =       "PQR";  // Changes with application                    101
-const String CODE_7 =       "STU";  // Changes with application                    110
-const String CODE_8 =       "VWX";  // Changes with application                    111
+const String CODE_RESET =   "ABC";  // Changes with application                    000
+const String CODE_2 =       "DEF";  // Changes with application                    001
+const String CODE_3 =       "GHI";  // Changes with application                    010
+const String CODE_4 =       "JKL";  // Changes with application                    011
+const String CODE_CUT_1 =   "MNO";  // Cut 1                                       100
+const String CODE_CUT_2 =   "PQR";  // Cut 2                                       101
+const String CODE_CUT_3 =   "STU";  // Cut 3                                       110
+const String CODE_CUT_4 =   "VWX";  // Cut 4                                       111
 
 // Stores incoming command
 String command = "";
@@ -99,6 +105,9 @@ SecondsTimer cutdownTimer(millis);
 SecondsTimer failsafeTimer(millis);
 Timer commandTimeout(millis);
 
+bool valveOpenable = true;
+
+
 void setup() {
   Serial.begin(BAUD);
   Serial.setTimeout(SERIAL_TIMEOUT);  //Set recieve timeout in milliseconds
@@ -107,10 +116,17 @@ void setup() {
   pinMode(HEARTBEAT_PIN, OUTPUT);               //Default Low (0)
   pinMode(SPEAKER_PIN, OUTPUT);                 //Default Low (0)
   pinMode(MOTOR_MOSFET, OUTPUT);
-  pinMode(NICHROME_MOSFET, OUTPUT);
-
-  digitalWrite(MOTOR_MOSFET, LOW);
-  digitalWrite(NICHROME_MOSFET, LOW);
+  
+  pinMode(NICHROME_MOSFET_1, OUTPUT);
+  pinMode(NICHROME_MOSFET_2, OUTPUT);
+  pinMode(NICHROME_MOSFET_3, OUTPUT);
+  pinMode(NICHROME_MOSFET_4, OUTPUT);
+  
+  digitalWrite(NICHROME_MOSFET_1, LOW);
+  digitalWrite(NICHROME_MOSFET_2, LOW);
+  digitalWrite(NICHROME_MOSFET_3, LOW);
+  digitalWrite(NICHROME_MOSFET_4, LOW);
+  
   digitalWrite(SPEAKER_PIN, LOW);    
   digitalWrite(HEARTBEAT_PIN, LOW);
 
@@ -119,12 +135,9 @@ void setup() {
   cutdownTimer.begin();
   commandTimeout.begin();
 
-  uint32_t storedTime = 0;
+  int storedTime = 0;
   EEPROM.get(EEPROM_FAILSAFE, storedTime);
   failsafeTimer.begin(storedTime);
-  char temp[10];
-  sprintf(temp,"%lu",storedTime);
-  Serial.print(temp);
 }
 
 void loop() {
@@ -135,9 +148,7 @@ void loop() {
   // Core function handlers
   handleCutdowns();
   handleHeartbeat();
-  handleFailsafeTimer();
   handleSerial();
-  Serial.write('K');
 }
 
 /*
@@ -167,13 +178,13 @@ void handleSerial () {
     }
     
     if (command == CODE_RESET) handleReset();
-    else if (command == CODE_1) handle1();
-    else if (command == CODE_CUTDOWN) handleCutdown();
-    else if (command == CODE_CUTSEC) handleCutdownSec();
-    else if (command == CODE_ADD) addTime();
-    else if (command == CODE_6) handle6();
-    else if (command == CODE_7) handle7();
-    else if (command == CODE_8) handle8();
+    else if (command == CODE_2) handle2();
+    else if (command == CODE_3) handle3();
+    else if (command == CODE_4) handle4();
+    else if (command == CODE_CUT_1) handleCut1();
+    else if (command == CODE_CUT_2) handleCut2();
+    else if (command == CODE_CUT_3) handleCut3();
+    else if (command == CODE_CUT_4) handleCut4();
     else handleIdle();
   }
 }
@@ -186,61 +197,63 @@ void handleSerial () {
 void handleReset () {
   Serial.write('Y');
   nichromeReady = true;
-  motorReady = true;
-  addReady = true;
 }
 
 void handleIdle () {
   Serial.write('Y');
 }
 
-void handle1 () {
+
+void handle2 () {
   Serial.write('Y');
 }
 
-void handleCutdown () {
+void handle3 () {
+  Serial.write('Y');
+}
+
+void handle4 () {
+  Serial.write('Y');
+}
+
+void handleCut1 () {
   Serial.write('Y');
   if (nichromeReady && cutState == IDLING) {
     nichromeReady = false;
     cutState = BURNING;
     cutdownTimer.reset();
-    digitalWrite(NICHROME_MOSFET, HIGH);
+    digitalWrite(NICHROME_MOSFET_1, HIGH);
   }
 }
 
-void handleCutdownSec () {
+void handleCut2 () {
   Serial.write('Y');
-  if (motorReady && cutState == IDLING) {
-    motorReady = false;
-    cutState = SPINNING;
+  if (nichromeReady && cutState == IDLING) {
+    nichromeReady = false;
+    cutState = BURNING;
     cutdownTimer.reset();
-    digitalWrite(MOTOR_MOSFET, HIGH);
+    digitalWrite(NICHROME_MOSFET_2, HIGH);
   }
 }
 
-void addTime () {
+void handleCut3 () {
   Serial.write('Y');
-  if (addReady) {
-    FAILSAFE_TIME = FAILSAFE_TIME + 7200;
-    imperialMarch();
-    addReady = false;
+  if (nichromeReady && cutState == IDLING) {
+    nichromeReady = false;
+    cutState = BURNING;
+    cutdownTimer.reset();
+    digitalWrite(NICHROME_MOSFET_3, HIGH);
   }
 }
 
-void handle5 () {
+void handleCut4 () {
   Serial.write('Y');
-}
-
-void handle6 () {
-  Serial.write('Y');
-}
-
-void handle7 () {
-  Serial.write('Y');
-}
-
-void handle8 () {
-  Serial.write('Y');
+  if (nichromeReady && cutState == IDLING) {
+    nichromeReady = false;
+    cutState = BURNING;
+    cutdownTimer.reset();
+    digitalWrite(NICHROME_MOSFET_4, HIGH);
+  }
 }
 
 /*
@@ -249,16 +262,13 @@ void handle8 () {
 */
 
 void handleCutdowns () {
-  if (cutState == SPINNING) {
-    if (cutdownTimer > MOTOR_TIME){
-      cutState = IDLING;
-      digitalWrite(MOTOR_MOSFET, LOW);
-    }
-  }
-  else if (cutState == BURNING) {
+  if (cutState == BURNING) {
     if (cutdownTimer > NICHROME_TIME){
       cutState = IDLING;
-      digitalWrite(NICHROME_MOSFET, LOW);
+      digitalWrite(NICHROME_MOSFET_1, LOW);
+      digitalWrite(NICHROME_MOSFET_2, LOW);
+      digitalWrite(NICHROME_MOSFET_3, LOW);
+      digitalWrite(NICHROME_MOSFET_4, LOW);
     }
   }
 }
@@ -285,27 +295,6 @@ void handleHeartbeat () {
     pulse();
     shortBeep();
   }
-}
-
-// Run a cutdown procedure if time has elapsed
-void handleFailsafeTimer () {
-  if (failsafeTimer > FAILSAFE_TIME) {
-    failsafeTimer.reset();
-    imperialMarch();
-    Serial.write("TIMEOUT");
-    cutState = SPINNING;
-    cutdownTimer.reset();
-    digitalWrite(MOTOR_MOSFET, HIGH);
-  }
-
-  // Redundant two trigger, timer reset
-  if( !digitalRead(SLIDE_SWITCH_PIN) && digitalRead(JUMPER_PIN) ){     
-    failsafeTimer.reset();
-    shortBeep();
-    shortBeep();
-  }
-  
-  EEPROM.put(EEPROM_FAILSAFE, failsafeTimer.elapsed());
 }
 
 void imperialMarch(void){                                     //https://www.youtube.com/watch?v=hNv5sPu0C1E

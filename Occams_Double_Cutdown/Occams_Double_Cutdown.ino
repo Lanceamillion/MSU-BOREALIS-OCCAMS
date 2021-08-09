@@ -29,7 +29,7 @@
 #define C5  523.25
 
 // DURATION OF THE NOTES 
-#define BPM 120                               // you can change this value changing all the others
+#define BPM 300                               // you can change this value changing all the others
 #define H 2*Q                                 // half 2/4
 #define Q 60000/BPM                           // quarter 1/4 
 #define E Q/2                                 // eighth 1/8
@@ -127,6 +127,7 @@ void setup() {
   int storedTime = 0;
   EEPROM.get(EEPROM_FAILSAFE, storedTime);
   failsafeTimer.begin(storedTime);
+  imperialMarch();
 }
 
 void loop() {

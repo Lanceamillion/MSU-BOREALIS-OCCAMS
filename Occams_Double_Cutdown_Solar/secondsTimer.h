@@ -2,6 +2,7 @@
 #define SECONDS_TIMER_H
 
 #include "timer.h"
+#include "stdint.h"
 
 class SecondsTimer {
   public:
@@ -9,21 +10,21 @@ class SecondsTimer {
     SecondsTimer (Timer *millis);
     ~SecondsTimer ();
     void begin ();
-    void begin (int start);
+    void begin (uint32_t start);
     void reset ();
     void count ();
-    int elapsed ();
+    uint32_t elapsed ();
 
-    void operator +=(int x);
-    void operator -=(int x);
-    int operator ==(int compare);
-    int operator <(int compare);
-    int operator >(int compare);
-    int operator >=(int compare);
-    int operator <=(int compare);
+    void operator +=(uint32_t x);
+    void operator -=(uint32_t x);
+    uint32_t operator ==(uint32_t compare);
+    uint32_t operator <(uint32_t compare);
+    uint32_t operator >(uint32_t compare);
+    uint32_t operator >=(uint32_t compare);
+    uint32_t operator <=(uint32_t compare);
   private:
     Timer *millisTimer;
-    int seconds;
+    uint32_t seconds;
 };
 
 #endif
