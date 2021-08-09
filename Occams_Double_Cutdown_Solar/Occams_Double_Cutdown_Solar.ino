@@ -1,6 +1,5 @@
 //To be used with dual cutdown AKA cutdown V2
 
-#include <SparkFun_TB6612.h>
 #include <EEPROM.h>
 #include "timer.h"
 #include "secondsTimer.h"
@@ -85,7 +84,7 @@ const String CODE_RESET =   "ABC";  // Device code to turn on IDLE              
 const String CODE_ADD =     "DEF";  // Changes with application                    001
 const String CODE_CUTDOWN = "GHI";  // Device code to trigger cutdown              010
 const String CODE_CUTSEC =  "JKL";  // Device code to trigger secondary cutdown    011
-const String CODE_1 =       "MNO";  // Add 2 hours to failsafe                     100
+const String CODE_1 =       "MNO";  // Changes with application                    100
 const String CODE_6 =       "PQR";  // Changes with application                    101
 const String CODE_7 =       "STU";  // Changes with application                    110
 const String CODE_8 =       "VWX";  // Changes with application                    111
@@ -121,10 +120,11 @@ void setup() {
 
   uint32_t storedTime = 0;
   EEPROM.get(EEPROM_FAILSAFE, storedTime);
+  if (storedTime == 0xFFFFFFFF){
+    storedTime = 25200;
+  }
   failsafeTimer.begin(storedTime);
-  char temp[10];
-  sprintf(temp,"%lu",storedTime);
-  Serial.print(temp);
+  Serial.println(storedTime);
 }
 
 void loop() {
@@ -137,7 +137,6 @@ void loop() {
   handleHeartbeat();
   handleFailsafeTimer();
   handleSerial();
-  Serial.write('K');
 }
 
 /*
